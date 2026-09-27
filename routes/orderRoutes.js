@@ -15,6 +15,8 @@ const {
 router.post('/', auth, role('customer'), createOrder);
 router.get('/', auth, role('customer'), getCustomerOrders);
 
+router.post('/validate-promo', auth, orderController.validatePromoCode);
+router.post('/', auth, orderController.createOrder);
 // ─── Specific routes FIRST (must be before /:id) ──────────────────
 router.get('/:id/track', auth, role('customer'), trackOrder);
 router.put('/:id/confirm', auth, role('customer'), confirmDelivery);
