@@ -8,15 +8,17 @@ const {
   getOrderById,
   trackOrder,
   confirmDelivery,
-  getTraderOrders, // ✅ this must exist
+  getTraderOrders,
+  validatePromoCode // 🔧 FIXED: Imported the missing function here
 } = require('../controllers/orderController');
 
 // ─── Customer routes ──────────────────────────────────────────────
 router.post('/', auth, role('customer'), createOrder);
 router.get('/', auth, role('customer'), getCustomerOrders);
 
-router.post('/validate-promo', auth, orderController.validatePromoCode);
-router.post('/', auth, orderController.createOrder);
+// 🔧 FIXED: Changed orderController references to the directly destructured functions
+router.post('/validate-promo', auth, validatePromoCode);
+
 // ─── Specific routes FIRST (must be before /:id) ──────────────────
 router.get('/:id/track', auth, role('customer'), trackOrder);
 router.put('/:id/confirm', auth, role('customer'), confirmDelivery);
