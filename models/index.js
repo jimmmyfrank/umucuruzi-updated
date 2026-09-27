@@ -70,7 +70,6 @@ Product.hasMany(CartItem, { foreignKey: 'product_id' });
 CartItem.belongsTo(Product, { foreignKey: 'product_id' });
 
 // Loyalty
-// Loyalty
 User.hasMany(Loyalty, { foreignKey: 'customer_id', onDelete: 'CASCADE' });
 User.hasMany(Loyalty, { foreignKey: 'trader_id', onDelete: 'CASCADE' });
 Loyalty.belongsTo(User, { foreignKey: 'customer_id', as: 'customer' });   // ✅ added alias
@@ -116,12 +115,15 @@ Review.belongsTo(Product, {
   constraints: false,
   as: 'product'
 });
+
 // ReferralReward
 User.hasMany(ReferralReward, { foreignKey: 'referrer_id', onDelete: 'CASCADE' });
 User.hasMany(ReferralReward, { foreignKey: 'referred_user_id', onDelete: 'CASCADE' });
 ReferralReward.belongsTo(User, { foreignKey: 'referrer_id' });
 ReferralReward.belongsTo(User, { foreignKey: 'referred_user_id' });
-Order.belongsTo(models.PromoCode, { foreignKey: 'promo_code_id' });
+
+// 🔧 FIXED: Changed 'models.PromoCode' to 'PromoCode' to prevent reference runtime crash
+Order.belongsTo(PromoCode, { foreignKey: 'promo_code_id' });
 
 module.exports = {
   sequelize,
