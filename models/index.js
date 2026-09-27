@@ -53,9 +53,9 @@ MarketMembership.belongsTo(User, { foreignKey: 'trader_id' });
 User.hasMany(Order, { foreignKey: 'customer_id', as: 'CustomerOrders' });
 User.hasMany(Order, { foreignKey: 'trader_id', as: 'TraderOrders' });
 User.hasMany(Order, { foreignKey: 'delivery_agent_id', as: 'AgentOrders' });
-Order.belongsTo(User, { foreignKey: 'customer_id', as: 'customer' });          // ✅ add alias
-Order.belongsTo(User, { foreignKey: 'trader_id', as: 'trader' });              // ✅ add alias
-Order.belongsTo(User, { foreignKey: 'delivery_agent_id', as: 'deliveryAgent' }); // ✅ add alias
+Order.belongsTo(User, { foreignKey: 'customer_id', as: 'customer' });          
+Order.belongsTo(User, { foreignKey: 'trader_id', as: 'trader' });              
+Order.belongsTo(User, { foreignKey: 'delivery_agent_id', as: 'deliveryAgent' }); 
 
 // Order ↔ OrderItems
 Order.hasMany(OrderItem, { foreignKey: 'order_id', onDelete: 'CASCADE' });
@@ -72,8 +72,8 @@ CartItem.belongsTo(Product, { foreignKey: 'product_id' });
 // Loyalty
 User.hasMany(Loyalty, { foreignKey: 'customer_id', onDelete: 'CASCADE' });
 User.hasMany(Loyalty, { foreignKey: 'trader_id', onDelete: 'CASCADE' });
-Loyalty.belongsTo(User, { foreignKey: 'customer_id', as: 'customer' });   // ✅ added alias
-Loyalty.belongsTo(User, { foreignKey: 'trader_id', as: 'trader' });       // ✅ added alias
+Loyalty.belongsTo(User, { foreignKey: 'customer_id', as: 'customer' });   
+Loyalty.belongsTo(User, { foreignKey: 'trader_id', as: 'trader' });       
 
 // Promo codes
 User.hasMany(PromoCode, { foreignKey: 'trader_id', onDelete: 'CASCADE' });
@@ -97,9 +97,9 @@ Notification.belongsTo(User, { foreignKey: 'user_id' });
 Order.hasOne(DeliveryAssignment, { foreignKey: 'order_id', onDelete: 'CASCADE' });
 DeliveryAssignment.belongsTo(Order, { foreignKey: 'order_id' });
 User.hasMany(DeliveryAssignment, { foreignKey: 'agent_id', onDelete: 'CASCADE' });
-DeliveryAssignment.belongsTo(User, { foreignKey: 'agent_id', as: 'agent' }); // ✅ add alias
+DeliveryAssignment.belongsTo(User, { foreignKey: 'agent_id', as: 'agent' }); 
 
-// Review ↔ User (already exists, but ensure alias)
+// Review ↔ User
 Review.belongsTo(User, { foreignKey: 'customer_id', as: 'customer' });
 User.hasMany(Review, { foreignKey: 'customer_id' });
 
@@ -121,9 +121,6 @@ User.hasMany(ReferralReward, { foreignKey: 'referrer_id', onDelete: 'CASCADE' })
 User.hasMany(ReferralReward, { foreignKey: 'referred_user_id', onDelete: 'CASCADE' });
 ReferralReward.belongsTo(User, { foreignKey: 'referrer_id' });
 ReferralReward.belongsTo(User, { foreignKey: 'referred_user_id' });
-
-// 🔧 FIXED: Changed 'models.PromoCode' to 'PromoCode' to prevent reference runtime crash
-Order.belongsTo(PromoCode, { foreignKey: 'promo_code_id' });
 
 module.exports = {
   sequelize,
