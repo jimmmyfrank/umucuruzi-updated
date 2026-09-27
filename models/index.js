@@ -121,6 +121,7 @@ User.hasMany(ReferralReward, { foreignKey: 'referrer_id', onDelete: 'CASCADE' })
 User.hasMany(ReferralReward, { foreignKey: 'referred_user_id', onDelete: 'CASCADE' });
 ReferralReward.belongsTo(User, { foreignKey: 'referrer_id' });
 ReferralReward.belongsTo(User, { foreignKey: 'referred_user_id' });
+Order.belongsTo(models.PromoCode, { foreignKey: 'promo_code_id' });
 
 module.exports = {
   sequelize,
