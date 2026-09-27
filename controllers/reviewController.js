@@ -112,8 +112,8 @@ exports.createTraderReview = async (req, res) => {
         target_type: 'trader',
         target_id: traderId,
         rating,
-        comment: comment || null,
-        created_at: new Date(),
+        comment: comment || null
+        // 🔧 FIXED: Removed 'created_at: new Date()' to prevent Sequelize system configuration collision
       });
     }
 
