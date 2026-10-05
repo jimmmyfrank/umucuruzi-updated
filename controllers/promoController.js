@@ -6,7 +6,7 @@ exports.getMyPromoCodes = async (req, res) => {
   try {
     const codes = await PromoCode.findAll({
       where: { trader_id: req.user.id },
-      order: [['created_at', 'DESC']]
+      order: [['created_at', 'DESC']],
     });
     res.json(codes);
   } catch (err) {
@@ -19,7 +19,7 @@ exports.createPromoCode = async (req, res) => {
   try {
     const {
       code,
-      discount_type, // 'percentage' or 'fixed'
+      discount_type,
       discount_value,
       start_date,
       end_date,
@@ -27,7 +27,6 @@ exports.createPromoCode = async (req, res) => {
       description,
     } = req.body;
 
-    // Validate
     if (!code || !discount_type || !discount_value || !start_date || !end_date) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -38,9 +37,8 @@ exports.createPromoCode = async (req, res) => {
       return res.status(400).json({ error: 'Discount value must be positive' });
     }
 
-    // Check if code already exists for this trader
     const existing = await PromoCode.findOne({
-      where: { code: code.trim().toUpperCase(), trader_id: req.user.id }
+      where: { code: code.trim().toUpperCase(), trader_id: req.user.id },
     });
     if (existing) {
       return res.status(409).json({ error: 'Promo code already exists' });
@@ -69,13 +67,14 @@ exports.createPromoCode = async (req, res) => {
 exports.deletePromoCode = async (req, res) => {
   try {
     const promo = await PromoCode.findOne({
-      where: { id: req.params.id, trader_id: req.user.id }
+      where: { id: req.params.id, trader_id: req.user.id },
     });
     if (!promo) return res.status(404).json({ error: 'Promo code not found' });
 
-    // Optionally prevent deletion if used
     if (promo.used_count > 0) {
-      return res.status(400).json({ error: 'Cannot delete a promo code that has been used' });
+      return res
+        .status(400)
+        .json({ error: 'Cannot delete a promo code that has been used' });
     }
 
     await promo.destroy();
@@ -89,7 +88,7 @@ exports.deletePromoCode = async (req, res) => {
 exports.togglePromoCode = async (req, res) => {
   try {
     const promo = await PromoCode.findOne({
-      where: { id: req.params.id, trader_id: req.user.id }
+      where: { id: req.params.id, trader_id: req.user.id },
     });
     if (!promo) return res.status(404).json({ error: 'Promo code not found' });
     promo.is_active = !promo.is_active;
@@ -117,16 +116,15 @@ exports.validatePromoCode = async (req, res) => {
         end_date: { [Op.gte]: new Date() },
         [Op.or]: [
           { usage_limit: null },
-          { usage_limit: { [Op.gt]: 0 } }
-        ]
-      }
+          { usage_limit: { [Op.gt]: 0 } },
+        ],
+      },
     });
 
     if (!promo) {
       return res.status(404).json({ error: 'Invalid or expired promo code' });
     }
 
-    // Check if usage limit is exceeded (should already be handled by query, but double-check)
     if (promo.usage_limit !== null && promo.used_count >= promo.usage_limit) {
       return res.status(400).json({ error: 'Promo code usage limit reached' });
     }
@@ -134,10 +132,10 @@ exports.validatePromoCode = async (req, res) => {
     let discount = 0;
     if (promo.discount_type === 'percentage') {
       discount = parseFloat(total_amount) * (promo.discount_value / 100);
-    } else { // fixed
+    } else {
       discount = parseFloat(promo.discount_value);
     }
-    discount = Math.min(discount, parseFloat(total_amount)); // cannot exceed total
+    discount = Math.min(discount, parseFloat(total_amount));
 
     res.json({
       valid: true,
@@ -159,55 +157,78 @@ exports.sendPromoCodeToLoyalCustomers = async (req, res) => {
     const promoId = req.params.id;
     const traderId = req.user.id;
 
-    // 1. Find the promo code
+    // 1. Find the promo
     const promo = await PromoCode.findOne({
       where: { id: promoId, trader_id: traderId },
-      transaction
+      transaction,
     });
     if (!promo) {
       await transaction.rollback();
       return res.status(404).json({ error: 'Promo code not found' });
     }
 
-    // 2. Find all loyal customers (completed at least one order with this trader)
+    // 2. Find loyal customers (completed at least one delivered order)
     const loyalCustomers = await Order.findAll({
       attributes: ['customer_id'],
       where: {
         trader_id: traderId,
-        order_status: 'delivered'
+        order_status: 'delivered',
       },
       group: ['customer_id'],
       raw: true,
-      transaction
+      transaction,
     });
 
     if (loyalCustomers.length === 0) {
       await transaction.rollback();
-      return res.status(400).json({ error: 'No loyal customers found for this trader' });
+      return res
+        .status(400)
+        .json({ error: 'No loyal customers found for this trader' });
     }
 
-    const customerIds = loyalCustomers.map(o => o.customer_id);
+    const customerIds = loyalCustomers.map((o) => o.customer_id);
 
-    // 3. Create notifications for each loyal customer
-    const notifications = customerIds.map(customerId => ({
+    // 3. Look up trader name for a friendly message
+    const trader = await User.findByPk(traderId, {
+      attributes: ['id', 'full_name', 'username'],
+      transaction,
+    });
+    const traderName =
+      trader?.full_name || trader?.username || 'a shop you love';
+
+    // 4. Build the human-readable discount string
+    const discountText =
+      promo.discount_type === 'percentage'
+        ? `${promo.discount_value}% off`
+        : `${promo.discount_value} RWF off`;
+    const endDateText = new Date(promo.end_date).toLocaleDateString();
+
+    // 5. Create notifications attached to the trader for deep-linking
+    const notifications = customerIds.map((customerId) => ({
       user_id: customerId,
       type: 'push',
-      title: '🎉 Exclusive Promo Code!',
-      message: `You have a special promo code: ${promo.code}. ${promo.discount_type === 'percentage' ? `${promo.discount_value}% off` : `${promo.discount_value} RWF off`} on your next order. Valid until ${new Date(promo.end_date).toLocaleDateString()}.`,
+      title: `🎉 Special promo from ${traderName}`,
+      message:
+        `You have a promo code from ${traderName}: ${promo.code}. ` +
+        `${discountText} on your next order. Valid until ${endDateText}. ` +
+        `Tap to browse the shop and use it.`,
+      related_type: 'trader',
+      related_id: traderId,
       is_read: false,
-      created_at: new Date()
+      created_at: new Date(),
     }));
 
     await Notification.bulkCreate(notifications, { transaction });
 
-    // 4. Optionally send push notifications
+    // 6. Best-effort push notifications (don't fail the txn)
     try {
       const { sendPushNotification } = require('../utils/sendPushNotification');
       for (const customerId of customerIds) {
         await sendPushNotification(
           customerId,
-          '🎉 Exclusive Promo Code!',
-          `Use ${promo.code} for ${promo.discount_type === 'percentage' ? `${promo.discount_value}% off` : `${promo.discount_value} RWF off`} on your next order!`
+          `🎉 Special promo from ${traderName}`,
+          `Use ${promo.code} for ${discountText} on your next order!`,
+          { related_type: 'trader', related_id: traderId, code: promo.code }
         );
       }
     } catch (pushErr) {
@@ -218,7 +239,7 @@ exports.sendPromoCodeToLoyalCustomers = async (req, res) => {
 
     res.json({
       message: `Promo code sent to ${customerIds.length} loyal customers`,
-      sentTo: customerIds.length
+      sentTo: customerIds.length,
     });
   } catch (err) {
     await transaction.rollback();
