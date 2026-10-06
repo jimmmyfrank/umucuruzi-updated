@@ -27,6 +27,7 @@ exports.signup = async (req, res) => {
       role,
       profile_image,
       description,
+      referral_code,
     } = req.body;
 
     // ── Required fields ──
@@ -60,7 +61,7 @@ exports.signup = async (req, res) => {
       });
     }
 
-    // ── Duplicate checks (specific field) ──
+    // ── Duplicate checks ──
     let conflictField = null;
     let conflictValue = null;
 
@@ -99,6 +100,39 @@ exports.signup = async (req, res) => {
         field: conflictField,
         value: conflictValue,
       });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  REFERRAL CODE RESOLUTION (new)
+    // ═══════════════════════════════════════════════════════════
+    let referrer = null;
+    if (referral_code && String(referral_code).trim()) {
+      const code = String(referral_code).trim().toUpperCase();
+
+      const referrerCandidate = await User.findOne({
+        where: { referral_code: code },
+      });
+
+      if (!referrerCandidate) {
+        return res.status(400).json({
+          error:
+            'That referral code is not valid. Please check it and try again.',
+          code: 'INVALID_REFERRAL_CODE',
+        });
+      }
+
+      // Prevent self-referral by username/phone
+      if (
+        referrerCandidate.username === username ||
+        referrerCandidate.phone === phone
+      ) {
+        return res.status(400).json({
+          error: 'You cannot use your own referral code.',
+          code: 'SELF_REFERRAL',
+        });
+      }
+
+      referrer = referrerCandidate;
     }
 
     // ── Profile image (base64) ──
@@ -151,7 +185,6 @@ exports.signup = async (req, res) => {
         profileImagePath = `/uploads/${filename}`;
       } catch (imageError) {
         console.error('Image processing error:', imageError);
-        // Continue without image — don't block signup
         profileImagePath = null;
       }
     }
@@ -168,6 +201,7 @@ exports.signup = async (req, res) => {
       password_hash: hashed,
       role,
       referral_code: referralCode,
+      referred_by: referrer ? referrer.id : null,
       profile_image: profileImagePath,
       description: description || null,
     });
@@ -179,6 +213,22 @@ exports.signup = async (req, res) => {
         shop_name: `${full_name}'s Shop`,
         is_paid: true,
       });
+    }
+
+    // ── Notify the referrer (new) ──
+    if (referrer) {
+      try {
+        await Notification.create({
+          user_id: referrer.id,
+          type: 'push',
+          title: '🎉 Someone joined using your code!',
+          message: `${full_name} signed up with your referral code. You'll earn points when they complete their first order.`,
+          is_read: false,
+          created_at: new Date(),
+        });
+      } catch (err) {
+        console.warn('Referral notification failed:', err.message);
+      }
     }
 
     // ── Response ──
@@ -213,7 +263,6 @@ exports.login = async (req, res) => {
 
     const user = await User.findOne({ where: { username } });
     if (!user) {
-      console.log('❌ User not found');
       return res.status(401).json({
         error: 'No account found with that username.',
         code: 'USER_NOT_FOUND',
@@ -221,7 +270,6 @@ exports.login = async (req, res) => {
     }
 
     if (!user.is_active) {
-      console.log('⚠️ User is disabled');
       return res.status(403).json({
         error: 'Your account has been disabled. Please contact support.',
         code: 'ACCOUNT_DISABLED',
@@ -230,8 +278,6 @@ exports.login = async (req, res) => {
 
     const bcrypt = require('bcryptjs');
     const match = await bcrypt.compare(password, user.password_hash);
-    console.log('🔑 Password match:', match);
-
     if (!match) {
       return res.status(401).json({
         error: 'Incorrect password. Please try again.',
