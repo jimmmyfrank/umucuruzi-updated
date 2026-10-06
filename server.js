@@ -590,6 +590,7 @@ app.use('/api/markets', require('./routes/marketRoutes'));
 app.use('/api/loyalty', require('./routes/loyaltyRoutes'));
 app.use('/api/search', require('./routes/searchRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/referrals', require('./routes/referralRoutes'));
 
 // ─── Root health check ──────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Umucuruzi API is running'));
