@@ -1,6 +1,7 @@
 const {
   Order, OrderItem, Product, User, TraderProfile, DeliveryAssignment,
-  Loyalty, Notification, CartItem, PromoCode, PromoCodeUsage, sequelize
+  Loyalty, Notification, CartItem, PromoCode, PromoCodeUsage,
+  ReferralReward, sequelize
 } = require('../models');
 const { Op } = require('sequelize');
 
@@ -365,6 +366,11 @@ exports.trackOrder = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────
+//  PUT /orders/:id/confirm  — customer confirms receipt
+//  Awards loyalty points AND (on the referred user's first delivered
+//  order) awards a referral bonus to whoever referred them.
+// ─────────────────────────────────────────────────────────────────────
 exports.confirmDelivery = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
@@ -391,21 +397,103 @@ exports.confirmDelivery = async (req, res) => {
     await order.update({ order_status: 'delivered' }, { transaction });
 
     if (order.delivery_type === 'delivery') {
-      const assignment = await DeliveryAssignment.findOne({ where: { order_id: order.id }, transaction });
+      const assignment = await DeliveryAssignment.findOne({
+        where: { order_id: order.id },
+        transaction
+      });
       if (assignment) await assignment.update({ status: 'delivered' }, { transaction });
     }
 
-    // Loyalty
+    // ── Loyalty points ──
     let loyalty = await Loyalty.findOne({
       where: { customer_id: customerId, trader_id: order.trader_id },
       transaction
     });
     if (!loyalty) {
-      loyalty = await Loyalty.create({ customer_id: customerId, trader_id: order.trader_id, points: 0 }, { transaction });
+      loyalty = await Loyalty.create(
+        { customer_id: customerId, trader_id: order.trader_id, points: 0 },
+        { transaction }
+      );
     }
     const pointsToAdd = parseInt(process.env.LOYALTY_POINTS_PER_ORDER, 10) || 5;
     loyalty.points += pointsToAdd;
     await loyalty.save({ transaction });
+
+    // ═════════════════════════════════════════════════════════════
+    //  REFERRAL REWARD
+    //  Fire exactly once, on the referred customer's first delivered
+    //  order. Idempotent via the referral_rewards unique check.
+    // ═════════════════════════════════════════════════════════════
+    try {
+      const customer = await User.findByPk(customerId, { transaction });
+
+      if (customer?.referred_by) {
+        // Count delivered orders for this customer (including the one we
+        // just set above, but inside this same transaction it sees the
+        // updated row because the UPDATE ran on this transaction).
+        const deliveredCount = await Order.count({
+          where: { customer_id: customerId, order_status: 'delivered' },
+          transaction
+        });
+
+        // First delivered order → reward referrer once
+        if (deliveredCount === 1) {
+          const alreadyRewarded = await ReferralReward.findOne({
+            where: {
+              referrer_id: customer.referred_by,
+              referred_user_id: customerId
+            },
+            transaction
+          });
+
+          if (!alreadyRewarded) {
+            const REFERRAL_POINTS = parseInt(
+              process.env.REFERRAL_POINTS || '50',
+              10
+            );
+
+            await ReferralReward.create(
+              {
+                referrer_id: customer.referred_by,
+                referred_user_id: customerId,
+                points_awarded: REFERRAL_POINTS,
+                awarded_at: new Date()
+              },
+              { transaction }
+            );
+
+            await Notification.create(
+              {
+                user_id: customer.referred_by,
+                type: 'push',
+                title: '🎉 Referral reward earned!',
+                message:
+                  `You earned ${REFERRAL_POINTS} loyalty points because someone you referred completed their first order.`,
+                is_read: false,
+                created_at: new Date()
+              },
+              { transaction }
+            );
+
+            await Notification.create(
+              {
+                user_id: customerId,
+                type: 'push',
+                title: 'Welcome bonus applied 🎁',
+                message:
+                  'Your first order is complete. Thanks for joining Umucuruzi!',
+                is_read: false,
+                created_at: new Date()
+              },
+              { transaction }
+            );
+          }
+        }
+      }
+    } catch (refErr) {
+      // Never let referral logic break the order confirmation
+      console.warn('Referral reward failed:', refErr.message);
+    }
 
     await Notification.create({
       user_id: order.trader_id,
